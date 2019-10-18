@@ -1,5 +1,7 @@
 # funciones basicas para el ejemplo de Genetic Algorithm de Robby the Robot
 library(crayon)
+library(dplyr)
+library(purrr)
 
 acciones <- 0:6
 situaciones <- -1:1
@@ -206,11 +208,14 @@ mutar <- function(codigo,tasa_mutacion=0.005){
 
 #juego a ser dios
 evolucion <- function(poblacion_inicial=50,nmundos=50,generaciones=10,tasa_mutacion=0.005,pasos=50){
+  resultados <- vector("numeric",generaciones)
   generacion <- crear_primera_generacion(N = poblacion_inicial)
   for (i in 1:generaciones){
     cat(blue(sprintf("Generacion %03d\n",i)))
-    resultados <- probar_generacion(generacion = generacion,nmundos = nmundos,pasos = pasos)
-    cat(red(sprintf("\nResultado medio de la generacion %03d %s\n",i,round(mean(resultados),2))))
+    resultados_todos <- probar_generacion(generacion = generacion,nmundos = nmundos,pasos = pasos)
+    resultados[i] <- mean(resultados_todos)
+    cat(red(sprintf("\nResultado medio de la generacion %03d %s\n",i,round(resultados[i],2))))
     generacion <- reproducir_generacion(fraccion = 0.5,tasa_mutacion = tasa_mutacion,generacion = generacion,resultados = resultados)
   }
+  return(resultados)
 }
