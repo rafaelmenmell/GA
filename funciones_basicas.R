@@ -2,6 +2,9 @@
 library(crayon)
 library(dplyr)
 library(purrr)
+library(furrr)
+
+plan(multisession,workers=8)
 
 acciones <- 0:6
 situaciones <- -1:1
@@ -53,8 +56,9 @@ random_posicion <- function(lado){
 get_accion_situacion_posicion <- function(situacion_posicion,codigo){
   nfila <- which(apply(situaciones_posibles, 1, function(x) identical(as.numeric(x), situacion_posicion)) == "TRUE")
   accion <- codigo[nfila]
-  if(length(accion)==0){
+  if(length(accion)==0 | is.na(accion)){
     print(situacion_posicion)
+    print(codigo)
     stop("error")
   }
   return(accion)
@@ -139,24 +143,27 @@ crear_mundos <- function(m){
   return(mundos)
 }
 
-operar_en_mundos_bucle <- function(codigo,pasos=50,mundos){
-  # resultados <- mundos %>% purrr::map(operar_en_mundos_bucle,pasos=pasos,codigo=codigo)
-  resultados <- vector("numeric",length(mundos))
-  for (n in 1:length(mundos)){
-    resultados[n] <- operar_en_mundo_bucle(mundo = mundos[[n]],codigo = codigo,pasos = pasos)
+operar_en_mundos_bucle <- function(codigo,pasos=50,mundos,paralelo=FALSE){
+  if(paralelo){
+    resultados <- mundos %>% furrr::future_map_dbl(operar_en_mundo_bucle,pasos=pasos,codigo=codigo)
+  } else {
+    resultados <- vector("numeric",length(mundos))
+      for (n in 1:length(mundos)){
+        resultados[n] <- operar_en_mundo_bucle(mundo = mundos[[n]],codigo = codigo,pasos = pasos)
+      }
   }
   resultados <- mean(resultados)
   return(resultados)
 }
 
-probar_generacion <- function(generacion,nmundos,pasos){
+probar_generacion <- function(generacion,nmundos,pasos,paralelo=FALSE){
   mundos <- crear_mundos(m = nmundos)
-  resultados <- vector("numeric",length(generacion))
+  resultados_gen <- vector("numeric",length(generacion))
   for (n in 1:length(generacion)){
     cat(sprintf("Probando replicante %03d\r",n))
-    resultados[n] <- operar_en_mundos_bucle(codigo = generacion[[n]],pasos = pasos,mundos = mundos)
+    resultados_gen[n] <- operar_en_mundos_bucle(codigo = generacion[[n]],pasos = pasos,mundos = mundos,paralelo=paralelo)
   }
-  return(resultados)
+  return(resultados_gen)
 }
 
 reproducir_generacion <- function(fraccion=0.5,tasa_mutacion=0.005,generacion,resultados){
@@ -207,15 +214,15 @@ mutar <- function(codigo,tasa_mutacion=0.005){
 }
 
 #juego a ser dios
-evolucion <- function(poblacion_inicial=50,nmundos=50,generaciones=10,tasa_mutacion=0.005,pasos=50){
-  resultados <- vector("numeric",generaciones)
+evolucion <- function(poblacion_inicial=50,nmundos=50,generaciones=10,tasa_mutacion=0.005,pasos=50,paralelo=FALSE){
+  resultados_evolucion <- vector("numeric",generaciones)
   generacion <- crear_primera_generacion(N = poblacion_inicial)
   for (i in 1:generaciones){
     cat(blue(sprintf("Generacion %03d\n",i)))
-    resultados_todos <- probar_generacion(generacion = generacion,nmundos = nmundos,pasos = pasos)
-    resultados[i] <- mean(resultados_todos)
-    cat(red(sprintf("\nResultado medio de la generacion %03d %s\n",i,round(resultados[i],2))))
-    generacion <- reproducir_generacion(fraccion = 0.5,tasa_mutacion = tasa_mutacion,generacion = generacion,resultados = resultados)
+    print(system.time(resultados_todos <- probar_generacion(generacion = generacion,nmundos = nmundos,pasos = pasos,paralelo=paralelo)))
+    resultados_evolucion[i] <- mean(resultados_todos)
+    cat(red(sprintf("\nResultado medio de la generacion %03d %s\n",i,round(resultados_evolucion[i],2))))
+    generacion <- reproducir_generacion(fraccion = 0.5,tasa_mutacion = tasa_mutacion,generacion = generacion,resultados = resultados_todos)
   }
-  return(resultados)
+  return(resultados_evolucion)
 }
