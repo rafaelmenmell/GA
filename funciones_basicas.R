@@ -4,7 +4,7 @@ library(dplyr)
 library(purrr)
 library(furrr)
 
-plan(multisession,workers=8)
+# plan(multisession,workers=availableCores()-1)
 
 acciones <- 0:6
 situaciones <- -1:1
@@ -54,7 +54,8 @@ random_posicion <- function(lado){
 }
 
 get_accion_situacion_posicion <- function(situacion_posicion,codigo){
-  nfila <- which(apply(situaciones_posibles, 1, function(x) identical(as.numeric(x), situacion_posicion)) == "TRUE")
+  # nfila <- which(apply(situaciones_posibles, 1, function(x) identical(as.numeric(x), situacion_posicion)) == "TRUE")
+  nfila <- as.numeric(row.names(situaciones_posibles[situaciones_posibles[,1]==situacion_posicion[1] & situaciones_posibles[,2]==situacion_posicion[2] & situaciones_posibles[,3]==situacion_posicion[3] & situaciones_posibles[,4]==situacion_posicion[4] & situaciones_posibles[,5]==situacion_posicion[5],]))
   accion <- codigo[nfila]
   if(length(accion)==0 | is.na(accion)){
     print(situacion_posicion)
@@ -158,10 +159,14 @@ operar_en_mundos_bucle <- function(codigo,pasos=50,mundos,paralelo=FALSE){
 
 probar_generacion <- function(generacion,nmundos,pasos,paralelo=FALSE){
   mundos <- crear_mundos(m = nmundos)
+  if(!paralelo){
   resultados_gen <- vector("numeric",length(generacion))
   for (n in 1:length(generacion)){
     cat(sprintf("Probando replicante %03d\r",n))
-    resultados_gen[n] <- operar_en_mundos_bucle(codigo = generacion[[n]],pasos = pasos,mundos = mundos,paralelo=paralelo)
+    resultados_gen[n] <- operar_en_mundos_bucle(codigo = generacion[[n]],pasos = pasos,mundos = mundos,paralelo=FALSE)
+  }
+  } else {
+    resultados_gen <- generacion %>% furrr::future_map_dbl(operar_en_mundos_bucle,pasos=pasos,mundos=mundos,paralelo=FALSE)
   }
   return(resultados_gen)
 }
@@ -171,7 +176,7 @@ reproducir_generacion <- function(fraccion=0.5,tasa_mutacion=0.005,generacion,re
   if(nex %% 2 != 0){
     nex <- nex + 1
   }
-  exitosos <- generacion[order(resultados)[1:nex]]
+  exitosos <- generacion[order(desc(resultados))[1:nex]]
   #cada exitoso se empareja 2 veces
   parejas <- c(combinaciones_sin_repeticion(candidatos = 1:nex),combinaciones_sin_repeticion(candidatos = 1:nex))
   generacion <- vector("list",length(parejas)*2)
@@ -197,7 +202,7 @@ combinaciones_sin_repeticion <- function(candidatos){
 
 reproducir_pareja <- function(pareja,exitosos,tasa_mutacion=0.005){
   max <- length(situaciones)^5
-  mitad <- round(max/2)
+  mitad <- sample(x = 1:max,size = 1)
   hijo1 <- c(exitosos[[pareja[1]]][1:mitad],exitosos[[pareja[2]]][(mitad+1):max])
   hijo1 <- mutar(hijo1,tasa_mutacion = tasa_mutacion)
   hijo2 <- c(exitosos[[pareja[2]]][1:mitad],exitosos[[pareja[1]]][(mitad+1):max])
@@ -219,7 +224,7 @@ evolucion <- function(poblacion_inicial=50,nmundos=50,generaciones=10,tasa_mutac
   generacion <- crear_primera_generacion(N = poblacion_inicial)
   for (i in 1:generaciones){
     cat(blue(sprintf("Generacion %03d\n",i)))
-    print(system.time(resultados_todos <- probar_generacion(generacion = generacion,nmundos = nmundos,pasos = pasos,paralelo=paralelo)))
+    resultados_todos <- probar_generacion(generacion = generacion,nmundos = nmundos,pasos = pasos,paralelo=paralelo)
     resultados_evolucion[i] <- mean(resultados_todos)
     cat(red(sprintf("\nResultado medio de la generacion %03d %s\n",i,round(resultados_evolucion[i],2))))
     generacion <- reproducir_generacion(fraccion = 0.5,tasa_mutacion = tasa_mutacion,generacion = generacion,resultados = resultados_todos)
